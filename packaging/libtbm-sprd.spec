@@ -11,15 +11,11 @@ BuildRequires:  pkgconfig(pthread-stubs)
 BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
-BuildRequires:  linux-glibc-devel
 BuildRequires:  kernel-headers-tizen-dev
-#!BuildIgnore: kernel-headers
 BuildConflicts:  linux-glibc-devel
-Requires:   libtbm
-Requires:   libdrm2
 
 %description
-descriptionion: ${summary}
+descriptionion:Tizen Buffer manager backend module for spreadtrum
 
 %prep
 %setup -q
