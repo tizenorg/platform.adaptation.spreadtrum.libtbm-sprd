@@ -111,7 +111,7 @@ char* target_name()
 #define SIZE_ALIGN( value, base ) (((value) + ((base) - 1)) & ~((base) - 1))
 
 #define TBM_SURFACE_ALIGNMENT_PLANE (64)
-#define TBM_SURFACE_ALIGNMENT_PITCH_RGB (64)
+#define TBM_SURFACE_ALIGNMENT_PITCH_RGB (128)
 #define TBM_SURFACE_ALIGNMENT_PITCH_YUV (16)
 
 
