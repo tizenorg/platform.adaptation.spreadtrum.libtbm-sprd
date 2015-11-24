@@ -4,7 +4,7 @@ Release:        0
 License:        MIT
 Summary:        Tizen Buffer Manager - sprd backend
 Group:          System/Libraries
-ExcludeArch:    i586
+ExcludeArch:    i586 x86_64
 %if ("%{?tizen_target_name}" != "TM1")
 ExcludeArch:    armv7l aarch64
 %endif
