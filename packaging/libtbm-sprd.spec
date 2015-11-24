@@ -5,6 +5,9 @@ License:        MIT
 Summary:        Tizen Buffer Manager - sprd backend
 Group:          System/Libraries
 ExcludeArch:    i586
+%if ("%{?profile}" != "mobile")
+ExcludeArch:    armv7l aarch64
+%endif
 Source0:        %{name}-%{version}.tar.gz
 
 BuildRequires:  pkgconfig(pthread-stubs)
