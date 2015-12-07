@@ -60,7 +60,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 #ifdef DEBUG
-#define LOG_TAG	"TBM_BACKEND"
+#define LOG_TAG    "TBM_BACKEND"
 #include <dlog.h>
 static int bDebug=0;
 
@@ -68,7 +68,7 @@ char* target_name()
 {
     FILE *f;
     char *slash;
-    static int 	initialized = 0;
+    static int     initialized = 0;
     static char app_name[128];
 
     if ( initialized )
@@ -101,8 +101,8 @@ char* target_name()
 
     return app_name;
 }
-#define TBM_SPRD_LOG(fmt, args...)		LOGE("\033[31m"  "[%s]" fmt "\033[0m", target_name(), ##args)
-#define DBG(fmt, args...)		if(bDebug&01) LOGE("[%s]" fmt, target_name(), ##args)
+#define TBM_SPRD_LOG(fmt, args...)        LOGE("\033[31m"  "[%s]" fmt "\033[0m", target_name(), ##args)
+#define DBG(fmt, args...)        if(bDebug&01) LOGE("[%s]" fmt, target_name(), ##args)
 #else
 #define TBM_SPRD_LOG(...)
 #define DBG(...)
@@ -130,29 +130,29 @@ char* target_name()
 }
 
 struct dma_buf_info {
-	unsigned long	size;
-	unsigned int	fence_supported;
-	unsigned int	padding;
+    unsigned long    size;
+    unsigned int    fence_supported;
+    unsigned int    padding;
 };
 
-#define DMA_BUF_ACCESS_READ		0x1
-#define DMA_BUF_ACCESS_WRITE		0x2
-#define DMA_BUF_ACCESS_DMA		0x4
-#define DMA_BUF_ACCESS_MAX		0x8
+#define DMA_BUF_ACCESS_READ        0x1
+#define DMA_BUF_ACCESS_WRITE        0x2
+#define DMA_BUF_ACCESS_DMA        0x4
+#define DMA_BUF_ACCESS_MAX        0x8
 
-#define DMA_FENCE_LIST_MAX 		5
+#define DMA_FENCE_LIST_MAX         5
 
 struct dma_buf_fence {
-	unsigned long		ctx;
-	unsigned int		type;
+    unsigned long        ctx;
+    unsigned int        type;
 };
 
-#define DMABUF_IOCTL_BASE	'F'
-#define DMABUF_IOWR(nr, type)	_IOWR(DMABUF_IOCTL_BASE, nr, type)
+#define DMABUF_IOCTL_BASE    'F'
+#define DMABUF_IOWR(nr, type)    _IOWR(DMABUF_IOCTL_BASE, nr, type)
 
-#define DMABUF_IOCTL_GET_INFO	DMABUF_IOWR(0x00, struct dma_buf_info)
-#define DMABUF_IOCTL_GET_FENCE	DMABUF_IOWR(0x01, struct dma_buf_fence)
-#define DMABUF_IOCTL_PUT_FENCE	DMABUF_IOWR(0x02, struct dma_buf_fence)
+#define DMABUF_IOCTL_GET_INFO    DMABUF_IOWR(0x00, struct dma_buf_info)
+#define DMABUF_IOCTL_GET_FENCE    DMABUF_IOWR(0x01, struct dma_buf_fence)
+#define DMABUF_IOCTL_PUT_FENCE    DMABUF_IOWR(0x02, struct dma_buf_fence)
 
 typedef struct _tbm_bufmgr_sprd *tbm_bufmgr_sprd;
 typedef struct _tbm_bo_sprd *tbm_bo_sprd;
@@ -712,6 +712,122 @@ tbm_sprd_bo_import (tbm_bo bo, unsigned int key)
     return (void *)bo_sprd;
 }
 
+static void *
+tbm_sprd_bo_import_fd (tbm_bo bo, tbm_fd key)
+{
+    SPRD_RETURN_VAL_IF_FAIL (bo!=NULL, 0);
+
+    tbm_bufmgr_sprd bufmgr_sprd;
+    tbm_bo_sprd bo_sprd;
+
+    bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
+    SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd!=NULL, 0);
+
+    unsigned int gem = 0;
+    unsigned int real_size = -1;
+    struct drm_sprd_gem_info info = {0, };
+
+    //getting handle from fd
+    struct drm_prime_handle arg = {0, };
+
+    arg.fd = key;
+    arg.flags = 0;
+    if (drmIoctl (bufmgr_sprd->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &arg))
+    {
+        TBM_SPRD_LOG ("error bo:%p Cannot get gem handle from fd:%d (%s)\n",
+                 bo, arg.fd, strerror(errno));
+        return NULL;
+    }
+    gem = arg.handle;
+
+    /* Determine size of bo.  The fd-to-handle ioctl really should
+     * return the size, but it doesn't.  If we have kernel 3.12 or
+     * later, we can lseek on the prime fd to get the size.  Older
+     * kernels will just fail, in which case we fall back to the
+     * provided (estimated or guess size). */
+    real_size = lseek(key, 0, SEEK_END);
+
+    info.handle = gem;
+    if (drmCommandWriteRead(bufmgr_sprd->fd,
+                           DRM_SPRD_GEM_GET,
+                           &info,
+                           sizeof(struct drm_sprd_gem_info)))
+    {
+        TBM_SPRD_LOG ("error bo:%p Cannot get gem info from gem:%d, fd:%d (%s)\n",
+                bo, gem, key, strerror(errno));
+        return 0;
+    }
+
+    if (real_size == -1)
+       real_size = info.size;
+
+    bo_sprd = calloc (1, sizeof(struct _tbm_bo_sprd));
+    if (!bo_sprd)
+    {
+        TBM_SPRD_LOG ("error bo:%p fail to allocate the bo private\n", bo);
+        return 0;
+    }
+
+    bo_sprd->fd = bufmgr_sprd->fd;
+    bo_sprd->gem = gem;
+    bo_sprd->size = real_size;
+    bo_sprd->flags_sprd = info.flags;
+    bo_sprd->flags_tbm = _get_tbm_flag_from_sprd (bo_sprd->flags_sprd);
+
+    bo_sprd->name = _get_name(bo_sprd->fd, bo_sprd->gem);
+    if (!bo_sprd->name)
+    {
+        TBM_SPRD_LOG ("error bo:%p Cannot get name from gem:%d, fd:%d (%s)\n",
+            bo, gem, key, strerror(errno));
+        free (bo_sprd);
+        return 0;
+    }
+
+    /* add bo to hash */
+    PrivGem *privGem = NULL;
+    int ret;
+
+    ret = drmHashLookup (bufmgr_sprd->hashBos, bo_sprd->name, (void**)&privGem);
+    if (ret == 0)
+    {
+        privGem->ref_count++;
+    }
+    else if (ret == 1)
+    {
+        privGem = calloc (1, sizeof(PrivGem));
+        if (!privGem)
+        {
+            TBM_SPRD_LOG ("[libtbm-sprd:%d] "
+                    "error %s:%d Fail to calloc privGem\n",
+                    getpid(), __FUNCTION__, __LINE__);
+            free (bo_sprd);
+            return 0;
+        }
+
+        privGem->ref_count = 1;
+        if (drmHashInsert (bufmgr_sprd->hashBos, bo_sprd->name, (void *)privGem) < 0)
+        {
+            TBM_SPRD_LOG ("error bo:%p Cannot insert bo to Hash(%d) from gem:%d, fd:%d\n",
+                bo, bo_sprd->name, gem, key);
+        }
+    }
+    else
+    {
+        TBM_SPRD_LOG ("error bo:%p Cannot insert bo to Hash(%d) from gem:%d, fd:%d\n",
+                bo, bo_sprd->name, gem, key);
+    }
+
+    DBG (" [%s] bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n", target_name(),
+         bo,
+         bo_sprd->gem, bo_sprd->name,
+         bo_sprd->dmabuf,
+         key,
+         bo_sprd->flags_tbm, bo_sprd->flags_sprd,
+         bo_sprd->size);
+
+    return (void *)bo_sprd;
+}
+
 static unsigned int
 tbm_sprd_bo_export (tbm_bo bo)
 {
@@ -741,6 +857,40 @@ tbm_sprd_bo_export (tbm_bo bo)
 
     return (unsigned int)bo_sprd->name;
 }
+
+tbm_fd
+tbm_sprd_bo_export_fd (tbm_bo bo)
+{
+    SPRD_RETURN_VAL_IF_FAIL (bo!=NULL, -1);
+
+    tbm_bo_sprd bo_sprd;
+    int ret;
+
+    bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
+    SPRD_RETURN_VAL_IF_FAIL (bo_sprd!=NULL, -1);
+
+    struct drm_prime_handle arg = {0, };
+
+    arg.handle = bo_sprd->gem;
+    ret = drmIoctl (bo_sprd->fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &arg);
+    if (ret)
+    {
+        TBM_SPRD_LOG ("error bo:%p Cannot dmabuf=%d (%s)\n",
+            bo, bo_sprd->gem, strerror(errno));
+        return (tbm_fd) ret;
+    }
+
+    DBG (" [%s] bo:%p, gem:%d(%d), fd:%d, key_fd:%d, flags:%d(%d), size:%d\n", target_name(),
+         bo,
+         bo_sprd->gem, bo_sprd->name,
+         bo_sprd->dmabuf,
+         arg.fd,
+         bo_sprd->flags_tbm, bo_sprd->flags_sprd,
+         bo_sprd->size);
+
+    return (tbm_fd)arg.fd;
+}
+
 
 static tbm_bo_handle
 tbm_sprd_bo_get_handle (tbm_bo bo, int device)
@@ -1191,20 +1341,20 @@ tbm_sprd_surface_get_plane_data(tbm_surface_h surface, int width, int height, tb
 
         case TBM_FORMAT_NV16:
         case TBM_FORMAT_NV61:
-			bpp = 16;
+            bpp = 16;
             //if(plane_idx == 0)
             {
                 _offset = 0;
-		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
-		if(plane_idx == 0)
-			break;
+        if(plane_idx == 0)
+            break;
             }
             //else if( plane_idx ==1 )
             {
                 _offset += _size;
-		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
                 _bo_idx = 0;
             }
@@ -1449,26 +1599,26 @@ tbm_sprd_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
         case TBM_FORMAT_YUV410:
         case TBM_FORMAT_YVU410:
             bpp = 9;
-	    align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
+        align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
             break;
         case TBM_FORMAT_YUV411:
         case TBM_FORMAT_YVU411:
         case TBM_FORMAT_YUV420:
         case TBM_FORMAT_YVU420:
             bpp = 12;
-	    //plane_idx == 0
+        //plane_idx == 0
             {
-		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx == 1
             {
-		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-		_size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
+        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+        _size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx == 2
             {
-		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size += SIZE_ALIGN(_pitch*(height/2),TBM_SURFACE_ALIGNMENT_PLANE);
             }
 
@@ -1476,26 +1626,26 @@ tbm_sprd_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
         case TBM_FORMAT_YUV422:
         case TBM_FORMAT_YVU422:
             bpp = 16;
-	    //plane_idx == 0
+        //plane_idx == 0
             {
-		_pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+        _pitch = SIZE_ALIGN(width,TBM_SURFACE_ALIGNMENT_PITCH_YUV);
                 _size = SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx == 1
             {
-		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
-		_size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
+        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+        _size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             //plane_idx == 2
             {
-		_pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
+        _pitch = SIZE_ALIGN(width/2,TBM_SURFACE_ALIGNMENT_PITCH_YUV/2);
                 _size += SIZE_ALIGN(_pitch*height,TBM_SURFACE_ALIGNMENT_PLANE);
             }
             break;
         case TBM_FORMAT_YUV444:
         case TBM_FORMAT_YVU444:
             bpp = 24;
-	    align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
+        align = TBM_SURFACE_ALIGNMENT_PITCH_YUV;
             break;
 
         default:
@@ -1503,10 +1653,10 @@ tbm_sprd_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
             break;
     }
 
-	if(_size > 0)
-		ret = _size;
-	else
-	    ret =  SIZE_ALIGN( (width * height * bpp) >> 3, align);
+    if(_size > 0)
+        ret = _size;
+    else
+        ret =  SIZE_ALIGN( (width * height * bpp) >> 3, align);
 
     return ret;
 
@@ -1515,7 +1665,7 @@ tbm_sprd_surface_get_size(tbm_surface_h surface, int width, int height, tbm_form
 int
 tbm_sprd_surface_get_num_bos(tbm_format format)
 {
-	int num = 0;
+    int num = 0;
 
     switch(format)
     {
@@ -1596,6 +1746,68 @@ tbm_sprd_surface_get_num_bos(tbm_format format)
     return num;
 }
 
+tbm_bo_handle
+tbm_sprd_fd_to_handle(tbm_bufmgr bufmgr, tbm_fd fd, int device)
+{
+    SPRD_RETURN_VAL_IF_FAIL (bufmgr!=NULL, (tbm_bo_handle) NULL);
+    SPRD_RETURN_VAL_IF_FAIL (fd > 0, (tbm_bo_handle) NULL);
+
+    tbm_bo_handle bo_handle;
+    memset (&bo_handle, 0x0, sizeof (uint64_t));
+
+    tbm_bufmgr_sprd bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_priv_from_bufmgr(bufmgr);
+
+    switch(device)
+    {
+    case TBM_DEVICE_DEFAULT:
+    case TBM_DEVICE_2D:
+    {
+        //getting handle from fd
+        struct drm_prime_handle arg = {0, };
+
+        arg.fd = fd;
+        arg.flags = 0;
+        if (drmIoctl (bufmgr_sprd->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &arg))
+        {
+            TBM_SPRD_LOG ("error Cannot get gem handle from fd:%d (%s)\n",
+                     arg.fd, strerror(errno));
+            return (tbm_bo_handle) NULL;
+        }
+
+        bo_handle.u32 = (uint32_t)arg.handle;;
+        break;
+    }
+    case TBM_DEVICE_CPU:
+        TBM_SPRD_LOG ("Not supported device:%d\n", device);
+        bo_handle.ptr = (void *) NULL;
+        break;
+    case TBM_DEVICE_3D:
+    case TBM_DEVICE_MM:
+        bo_handle.u32 = (uint32_t)fd;
+        break;
+    default:
+        TBM_SPRD_LOG ("error Not supported device:%d\n", device);
+        bo_handle.ptr = (void *) NULL;
+        break;
+    }
+
+    return bo_handle;
+}
+
+int
+tbm_sprd_bo_get_flags (tbm_bo bo)
+{
+    SPRD_RETURN_VAL_IF_FAIL (bo != NULL, 0);
+
+    tbm_bo_sprd bo_sprd;
+
+    bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
+    SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
+
+    return bo_sprd->flags_tbm;
+}
+
+
 MODULEINITPPROTO (init_tbm_bufmgr_priv);
 
 static TBMModuleVersionInfo SprdVersRec =
@@ -1662,7 +1874,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->bo_alloc = tbm_sprd_bo_alloc,
     bufmgr_backend->bo_free = tbm_sprd_bo_free,
     bufmgr_backend->bo_import = tbm_sprd_bo_import,
+    bufmgr_backend->bo_import_fd = tbm_sprd_bo_import_fd,
     bufmgr_backend->bo_export = tbm_sprd_bo_export,
+    bufmgr_backend->bo_export_fd = tbm_sprd_bo_export_fd,
     bufmgr_backend->bo_get_handle = tbm_sprd_bo_get_handle,
     bufmgr_backend->bo_map = tbm_sprd_bo_map,
     bufmgr_backend->bo_unmap = tbm_sprd_bo_unmap,
@@ -1671,7 +1885,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     bufmgr_backend->surface_get_plane_data = tbm_sprd_surface_get_plane_data;
     bufmgr_backend->surface_get_size = tbm_sprd_surface_get_size;
     bufmgr_backend->surface_supported_format = tbm_sprd_surface_supported_format;
+    bufmgr_backend->fd_to_handle = tbm_sprd_fd_to_handle;
     bufmgr_backend->surface_get_num_bos = tbm_sprd_surface_get_num_bos;
+    bufmgr_backend->bo_get_flags = tbm_sprd_bo_get_flags;
 
     if (bufmgr_sprd->use_dma_fence)
     {
