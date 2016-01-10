@@ -14,6 +14,7 @@ BuildRequires:  pkgconfig(pthread-stubs)
 BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
+BuildRequires:  pkgconfig(wayland-client)
 BuildRequires:  kernel-headers-tizen-dev
 BuildConflicts:  linux-glibc-devel
 

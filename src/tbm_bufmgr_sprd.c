@@ -49,6 +49,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <drm/sprd_drm.h>
 #include <pthread.h>
 #include <tbm_surface.h>
+#include "tbm_wayland.h"
 
 #define DEBUG
 
@@ -195,6 +196,8 @@ struct _tbm_bufmgr_sprd
     void* hashBos;
 
     int use_dma_fence;
+
+    int fd_owner;
 };
 
 char *STR_DEVICE[]=
@@ -1201,6 +1204,9 @@ tbm_sprd_bufmgr_deinit (void *priv)
         bufmgr_sprd->hashBos = NULL;
     }
 
+    if (bufmgr_sprd->fd_owner)
+        close (bufmgr_sprd->fd_owner);
+
     free (bufmgr_sprd);
 }
 
@@ -1835,8 +1841,15 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
         return 0;
     }
 
-    bufmgr_sprd->fd = fd;
-    if (bufmgr_sprd->fd < 0)
+    if (fd < 0)
+    {
+        bufmgr_sprd->fd = tbm_bufmgr_get_drm_fd_wayland();
+        bufmgr_sprd->fd_owner = 1;
+    }
+    else
+        bufmgr_sprd->fd = fd;
+
+    if (bufmgr_sprd->fd  < 0)
     {
         TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
         free (bufmgr_sprd);
@@ -1864,6 +1877,10 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     if (!bufmgr_backend)
     {
         TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
+
+        if (bufmgr_sprd->fd_owner)
+            close(bufmgr_sprd->fd);
+
         free (bufmgr_sprd);
         return 0;
     }
@@ -1907,6 +1924,10 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
     {
         TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to init backend!\n", getpid());
         tbm_backend_free (bufmgr_backend);
+
+        if (bufmgr_sprd->fd_owner)
+            close(bufmgr_sprd->fd);
+
         free (bufmgr_sprd);
         return 0;
     }
