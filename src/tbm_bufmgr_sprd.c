@@ -773,7 +773,6 @@ tbm_sprd_bo_import_fd (tbm_bo bo, tbm_fd key)
 
     bo_sprd->fd = bufmgr_sprd->fd;
     bo_sprd->gem = gem;
-    bo_sprd->dmabuf = key;
     bo_sprd->size = real_size;
     bo_sprd->flags_sprd = info.flags;
     bo_sprd->flags_tbm = _get_tbm_flag_from_sprd (bo_sprd->flags_sprd);
