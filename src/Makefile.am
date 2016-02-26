@@ -9,5 +9,4 @@ libtbm_sprd_ladir = /${bufmgr_dir}
 libtbm_sprd_la_LIBADD = @LIBTBM_SPRD_LIBS@
 
 libtbm_sprd_la_SOURCES = \
-	tbm_bufmgr_sprd.c \
-	tbm_wayland.c
+	tbm_bufmgr_sprd.c
