@@ -32,6 +32,10 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "config.h"
 #endif
 
+#if HAVE_UDEV
+#include <libudev.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -63,6 +67,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define LOG_TAG    "TBM_BACKEND"
 #include <dlog.h>
 static int bDebug = 0;
+
+#define SPRD_DRM_NAME "sprd"
 
 char *
 target_name()
@@ -224,6 +230,8 @@ struct _tbm_bufmgr_sprd {
 	int tgl_fd;
 
 	void *bind_display;
+
+	char *device_name;
 };
 
 char *STR_DEVICE[] = {
@@ -357,6 +365,98 @@ _tgl_get_data(int fd, unsigned int key, unsigned int *locked)
 		*locked = arg.locked;
 
 	return arg.data1;
+}
+
+static int
+_tbm_sprd_open_drm()
+{
+	int fd = -1;
+
+	fd = drmOpen(SPRD_DRM_NAME, NULL);
+	if (fd < 0) {
+		TBM_SPRD_LOG ("[libtbm-sprd:%d] "
+			      "warning %s:%d fail to open drm\n",
+			      getpid(), __FUNCTION__, __LINE__);
+	}
+
+#ifdef HAVE_UDEV
+	if (fd < 0) {
+		struct udev *udev = NULL;
+		struct udev_enumerate *e = NULL;
+		struct udev_list_entry *entry = NULL;
+		struct udev_device *device = NULL, *drm_device = NULL, *device_parent = NULL;
+		const char *filepath;
+		struct stat s;
+		int fd = -1;
+		int ret;
+
+		TBM_SPRD_LOG ("[libtbm-sprd:%d] "
+			      "%s:%d search drm-device by udev\n",
+			      getpid(), __FUNCTION__, __LINE__);
+
+		udev = udev_new();
+		if (!udev) {
+			TBM_SPRD_LOG("udev_new() failed.\n");
+			return -1;
+		}
+
+		e = udev_enumerate_new(udev);
+		udev_enumerate_add_match_subsystem(e, "drm");
+		udev_enumerate_add_match_sysname(e, "card[0-9]*");
+		udev_enumerate_scan_devices(e);
+
+		udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(e)) {
+			device = udev_device_new_from_syspath(udev_enumerate_get_udev(e),
+							      udev_list_entry_get_name(entry));
+			device_parent = udev_device_get_parent(device);
+			/* Not need unref device_parent. device_parent and device have same refcnt */
+			if (device_parent) {
+				if (strcmp(udev_device_get_sysname(device_parent), "sprd-drm") == 0) {
+					drm_device = device;
+					DBG("[%s] Found render device: '%s' (%s)\n",
+					    target_name(),
+					    udev_device_get_syspath(drm_device),
+					    udev_device_get_sysname(device_parent));
+					break;
+				}
+			}
+			udev_device_unref(device);
+		}
+
+		udev_enumerate_unref(e);
+
+		/* Get device file path. */
+		filepath = udev_device_get_devnode(drm_device);
+		if (!filepath) {
+			TBM_SPRD_LOG("udev_device_get_devnode() failed.\n");
+			udev_device_unref(drm_device);
+			udev_unref(udev);
+			return -1;
+		}
+
+		/* Open DRM device file and check validity. */
+		fd = open(filepath, O_RDWR | O_CLOEXEC);
+		if (fd < 0) {
+			TBM_SPRD_LOG("open(%s, O_RDWR | O_CLOEXEC) failed.\n");
+			udev_device_unref(drm_device);
+			udev_unref(udev);
+			return -1;
+		}
+
+		ret = fstat(fd, &s);
+		if (ret) {
+			TBM_SPRD_LOG("fstat() failed %s.\n");
+			udev_device_unref(drm_device);
+			udev_unref(udev);
+			return -1;
+		}
+
+		udev_device_unref(drm_device);
+		udev_unref(udev);
+	}
+#endif
+
+	return fd;
 }
 
 static int
@@ -545,16 +645,6 @@ _bo_destroy_cache_state(tbm_bo bo)
 
 	_tgl_destroy(bufmgr_sprd->tgl_fd, bo_sprd->name);
 }
-
-static inline int
-_is_drm_master(int drm_fd)
-{
-	drm_magic_t magic;
-
-	return drmGetMagic(drm_fd, &magic) == 0 &&
-	       drmAuthMagic(drm_fd, magic) == 0;
-}
-
 
 #ifndef USE_CONTIG_ONLY
 static unsigned int
@@ -1429,7 +1519,12 @@ tbm_sprd_bufmgr_deinit (void *priv)
 	close (bufmgr_sprd->tgl_fd);
 
 	if (bufmgr_sprd->bind_display)
-		tbm_drm_helper_wl_server_deinit();
+		tbm_drm_helper_wl_auth_server_deinit();
+
+	if (bufmgr_sprd->device_name)
+		free(bufmgr_sprd->device_name);
+
+	close (bufmgr_sprd->fd);
 
 	free (bufmgr_sprd);
 }
@@ -1729,8 +1824,8 @@ tbm_sprd_bufmgr_bind_native_display (tbm_bufmgr bufmgr, void *NativeDisplay)
 	bufmgr_sprd = tbm_backend_get_priv_from_bufmgr(bufmgr);
 	SPRD_RETURN_VAL_IF_FAIL(bufmgr_sprd != NULL, 0);
 
-	if (!tbm_drm_helper_wl_server_init(NativeDisplay, bufmgr_sprd->fd,
-					   "/dev/dri/card0", 0)) {
+	if (!tbm_drm_helper_wl_auth_server_init(NativeDisplay, bufmgr_sprd->fd,
+					   bufmgr_sprd->device_name, 0)) {
 		TBM_SPRD_LOG("[libtbm-sprd:%d] error:Fail to tbm_drm_helper_wl_server_init\n");
 		return 0;
 	}
@@ -1766,19 +1861,34 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (tbm_backend_is_display_server()) {
+		int master_fd = -1;
+
 		bufmgr_sprd->fd = -1;
-		bufmgr_sprd->fd = tbm_drm_helper_get_master_fd();
-		if (bufmgr_sprd->fd < 0) {
+		master_fd = tbm_drm_helper_get_master_fd();
+		if (master_fd < 0) {
 			bufmgr_sprd->fd = _tbm_sprd_open_drm();
 			tbm_drm_helper_set_master_fd(bufmgr_sprd->fd);
+		} else {
+			bufmgr_sprd->fd = dup(master_fd);
 		}
+
 		if (bufmgr_sprd->fd < 0) {
 			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
 			free (bufmgr_sprd);
 			return 0;
 		}
+
+		bufmgr_sprd->device_name = drmGetDeviceNameFromFd(bufmgr_sprd->fd);
+
+		if (!bufmgr_sprd->device_name)
+		{
+			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to get device name!\n", getpid());
+			free (bufmgr_sprd);
+			return 0;
+		}
+
 	} else {
-		if (!tbm_drm_helper_get_auth_info(&(bufmgr_sprd->fd), NULL, NULL)) {
+		if (!tbm_drm_helper_get_auth_info(&(bufmgr_sprd->fd), &(bufmgr_sprd->device_name), NULL)) {
 			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to get auth drm info!\n", getpid());
 			free (bufmgr_sprd);
 			return 0;
