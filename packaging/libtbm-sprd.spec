@@ -1,5 +1,5 @@
 Name:           libtbm-sprd
-Version:        1.0.0
+Version:        1.0.1
 Release:        0
 License:        MIT
 Summary:        Tizen Buffer Manager - sprd backend
