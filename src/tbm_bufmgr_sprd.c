@@ -1516,14 +1516,13 @@ tbm_sprd_bufmgr_deinit (void *priv)
 		bufmgr_sprd->hashBos = NULL;
 	}
 
-	close (bufmgr_sprd->tgl_fd);
-
 	if (bufmgr_sprd->bind_display)
 		tbm_drm_helper_wl_auth_server_deinit();
 
 	if (bufmgr_sprd->device_name)
 		free(bufmgr_sprd->device_name);
 
+	close (bufmgr_sprd->tgl_fd);
 	close (bufmgr_sprd->fd);
 
 	free (bufmgr_sprd);
@@ -1905,6 +1904,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 				     "error: Fail to open global_lock:%s\n",
 				     getpid(), tgl_devfile);
 
+			close(bufmgr_sprd->fd);
 			free (bufmgr_sprd);
 			return 0;
 		}
@@ -1914,6 +1914,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 		TBM_SPRD_LOG("[libtbm:%d] "
 			     "error: Fail to initialize the tgl\n",
 			     getpid());
+
+		close(bufmgr_sprd->fd);
+		close(bufmgr_sprd->tgl_fd);
 
 		free (bufmgr_sprd);
 		return 0;
@@ -1938,6 +1941,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend = tbm_backend_alloc();
 	if (!bufmgr_backend) {
 		TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
+
+		close(bufmgr_sprd->fd);
+		close(bufmgr_sprd->tgl_fd);
 
 		free (bufmgr_sprd);
 		return 0;
@@ -1969,6 +1975,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 	if (!tbm_backend_init (bufmgr, bufmgr_backend)) {
 		TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to init backend!\n", getpid());
 		tbm_backend_free (bufmgr_backend);
+
+		close(bufmgr_sprd->tgl_fd);
+		close(bufmgr_sprd->fd);
 
 		free (bufmgr_sprd);
 		return 0;
