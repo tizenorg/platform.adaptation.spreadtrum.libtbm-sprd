@@ -367,7 +367,6 @@ _tgl_get_data(int fd, unsigned int key, unsigned int *locked)
 	return arg.data1;
 }
 
-#if 0
 static int
 _tbm_sprd_open_drm()
 {
@@ -459,7 +458,6 @@ _tbm_sprd_open_drm()
 
 	return fd;
 }
-#endif
 
 static int
 _sprd_bo_cache_flush (tbm_bo bo, int flags)
@@ -1862,8 +1860,6 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (tbm_backend_is_display_server()) {
-#if 0
-		/* this code is applied with libtdm-sprd */
 		int master_fd = -1;
 
 		bufmgr_sprd->fd = -1;
@@ -1874,9 +1870,6 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 		} else {
 			bufmgr_sprd->fd = dup(master_fd);
 		}
-#else
-		bufmgr_sprd->fd = dup(fd);
-#endif
 
 		if (bufmgr_sprd->fd < 0) {
 			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
