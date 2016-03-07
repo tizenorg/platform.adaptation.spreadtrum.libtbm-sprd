@@ -1977,7 +1977,6 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->bo_unlock = tbm_sprd_bo_unlock;
 	bufmgr_backend->bufmgr_bind_native_display = tbm_sprd_bufmgr_bind_native_display;
 
-	bufmgr_backend->flags |= TBM_LOCK_CTRL_BACKEND;
 	bufmgr_backend->flags |= TBM_USE_2_0_BACKEND;
 
 	if (!tbm_backend_init (bufmgr, bufmgr_backend)) {
