@@ -1553,7 +1553,6 @@ tbm_sprd_surface_supported_format(uint32_t **formats, uint32_t *num)
 
 /**
  * @brief get the plane data of the surface.
- * @param[in] surface : the surface
  * @param[in] width : the width of the surface
  * @param[in] height : the height of the surface
  * @param[in] format : the format of the surface
@@ -1565,7 +1564,7 @@ tbm_sprd_surface_supported_format(uint32_t **formats, uint32_t *num)
  * @return 1 if this function succeeds, otherwise 0.
  */
 int
-tbm_sprd_surface_get_plane_data(tbm_surface_h surface, int width, int height,
+tbm_sprd_surface_get_plane_data(int width, int height,
 				tbm_format format, int plane_idx, uint32_t *size, uint32_t *offset,
 				uint32_t *pitch, int *bo_idx)
 {
@@ -1965,12 +1964,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 	bufmgr_backend->surface_get_plane_data = tbm_sprd_surface_get_plane_data;
 	bufmgr_backend->surface_supported_format = tbm_sprd_surface_supported_format;
 	bufmgr_backend->bo_get_flags = tbm_sprd_bo_get_flags;
-	bufmgr_backend->bo_lock = NULL;
-	bufmgr_backend->bo_lock2 = tbm_sprd_bo_lock;
+	bufmgr_backend->bo_lock = tbm_sprd_bo_lock;
 	bufmgr_backend->bo_unlock = tbm_sprd_bo_unlock;
 	bufmgr_backend->bufmgr_bind_native_display = tbm_sprd_bufmgr_bind_native_display;
-
-	bufmgr_backend->flags |= TBM_USE_2_0_BACKEND;
 
 	if (!tbm_backend_init (bufmgr, bufmgr_backend)) {
 		TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to init backend!\n", getpid());
