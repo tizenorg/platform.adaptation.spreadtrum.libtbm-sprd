@@ -1065,7 +1065,7 @@ tbm_sprd_bo_import_fd (tbm_bo bo, tbm_fd key)
 	tbm_bo_sprd bo_sprd;
 	PrivGem *privGem = NULL;
 	int ret;
-	int name;
+	unsigned int name;
 
 	bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
