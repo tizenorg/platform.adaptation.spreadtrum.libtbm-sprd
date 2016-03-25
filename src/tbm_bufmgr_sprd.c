@@ -1519,6 +1519,9 @@ tbm_sprd_bufmgr_deinit (void *priv)
 	if (bufmgr_sprd->bind_display)
 		tbm_drm_helper_wl_auth_server_deinit();
 
+	if (tbm_backend_is_display_server())
+		tbm_drm_helper_unset_tbm_master_fd();
+
 	if (bufmgr_sprd->device_name)
 		free(bufmgr_sprd->device_name);
 
@@ -1863,18 +1866,18 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 
 		bufmgr_sprd->fd = -1;
 		master_fd = tbm_drm_helper_get_master_fd();
-		if (master_fd < 0) {
+		if (master_fd < 0)
 			bufmgr_sprd->fd = _tbm_sprd_open_drm();
-			tbm_drm_helper_set_master_fd(bufmgr_sprd->fd);
-		} else {
-			bufmgr_sprd->fd = dup(master_fd);
-		}
-
+		else
+			bufmgr_sprd->fd = master_fd;
+		
 		if (bufmgr_sprd->fd < 0) {
 			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
 			free (bufmgr_sprd);
 			return 0;
 		}
+
+		tbm_drm_helper_set_tbm_master_fd(bufmgr_sprd->fd);
 
 		bufmgr_sprd->device_name = drmGetDeviceNameFromFd(bufmgr_sprd->fd);
 
