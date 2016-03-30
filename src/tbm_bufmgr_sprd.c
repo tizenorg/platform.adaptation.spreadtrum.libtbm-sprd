@@ -258,7 +258,7 @@ uint32_t tbm_sprd_color_format_list[TBM_COLOR_FORMAT_COUNT] = { TBM_FORMAT_RGBA8
 								TBM_FORMAT_YUV420,
 								TBM_FORMAT_YVU420
 							      };
-#ifdef USE_CACHE
+
 static inline int
 _tgl_init(int fd, unsigned int key)
 {
@@ -326,6 +326,7 @@ _tgl_unlock(int fd, unsigned int key)
 	return 1;
 }
 
+#ifdef USE_CACHE
 static inline int
 _tgl_set_data(int fd, unsigned int key, unsigned int val)
 {
@@ -459,10 +460,10 @@ _tbm_sprd_open_drm()
 	return fd;
 }
 
+#ifdef USE_CACHE
 static int
 _sprd_bo_cache_flush (tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd, int flags)
 {
-#ifdef USE_CACHE
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
 	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
 
@@ -510,24 +511,24 @@ _sprd_bo_cache_flush (tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd, int flag
 			      getpid(), __FUNCTION__, __LINE__);
 		return 0;
 	}
-#endif
 
 	return 1;
 }
+#endif
 
 static int
 _bo_init_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd, int import)
 {
-#ifdef USE_CACHE
 	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
-
-	tbm_bo_cache_state cache_state;
 
 	if (bufmgr_sprd->use_dma_fence)
 		return 1;
 
 	_tgl_init(bufmgr_sprd->tgl_fd, bo_sprd->name);
+
+#ifdef USE_CACHE
+	tbm_bo_cache_state cache_state;
 
 	if (import == 0) {
 		cache_state.data.isDirtied = DEVICE_NONE;
@@ -634,7 +635,6 @@ _bo_save_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd)
 static void
 _bo_destroy_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd)
 {
-#ifdef USE_CACHE
 	SPRD_RETURN_IF_FAIL (bo_sprd != NULL);
 	SPRD_RETURN_IF_FAIL (bufmgr_sprd != NULL);
 
@@ -642,13 +642,11 @@ _bo_destroy_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd)
 		return;
 
 	_tgl_destroy(bufmgr_sprd->tgl_fd, bo_sprd->name);
-#endif
 }
 
 static int
 _bufmgr_init_cache_state(tbm_bufmgr_sprd bufmgr_sprd)
 {
-#ifdef USE_CACHE
 	SPRD_RETURN_VAL_IF_FAIL(bufmgr_sprd != NULL, 0);
 
 	if (bufmgr_sprd->use_dma_fence)
@@ -669,6 +667,7 @@ _bufmgr_init_cache_state(tbm_bufmgr_sprd bufmgr_sprd)
 		}
 	}
 
+#ifdef USE_CACHE
 	if (!_tgl_init(bufmgr_sprd->tgl_fd, GLOBAL_KEY)) {
 		TBM_SPRD_LOG("[libtbm-sprd:%d] "
 			       "error: Fail to initialize the tgl\n",
@@ -685,7 +684,6 @@ _bufmgr_init_cache_state(tbm_bufmgr_sprd bufmgr_sprd)
 static void
 _bufmgr_deinit_cache_state(tbm_bufmgr_sprd bufmgr_sprd)
 {
-#ifdef USE_CACHE
 	SPRD_RETURN_IF_FAIL(bufmgr_sprd != NULL);
 
 	if (bufmgr_sprd->use_dma_fence)
@@ -693,7 +691,6 @@ _bufmgr_deinit_cache_state(tbm_bufmgr_sprd bufmgr_sprd)
 
 	if (bufmgr_sprd->tgl_fd >= 0)
 		close(bufmgr_sprd->tgl_fd);
-#endif
 }
 
 #ifndef USE_CONTIG_ONLY
@@ -1391,7 +1388,6 @@ tbm_sprd_bo_lock(tbm_bo bo, int device, int opt)
 {
 	SPRD_RETURN_VAL_IF_FAIL (bo != NULL, 0);
 
-#if USE_BACKEND_LOCK
 	tbm_bufmgr_sprd bufmgr_sprd;
 	tbm_bo_sprd bo_sprd;
 	int ret = 0;
@@ -1403,6 +1399,7 @@ tbm_sprd_bo_lock(tbm_bo bo, int device, int opt)
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
 
 	if (bufmgr_sprd->use_dma_fence) {
+#if USE_BACKEND_LOCK
 		struct dma_buf_fence fence;
 
 		memset(&fence, 0, sizeof(struct dma_buf_fence));
@@ -1472,6 +1469,7 @@ tbm_sprd_bo_lock(tbm_bo bo, int device, int opt)
 		     getpid(),
 		     __FUNCTION__, bo_sprd->name, bo_sprd->dmabuf);
 	} else {
+
 		ret = _tgl_lock(bufmgr_sprd->tgl_fd, bo_sprd->name);
 
 		DBG ("[libtbm-sprd:%d] lock tgl flink_id:%d\n",
@@ -1479,8 +1477,8 @@ tbm_sprd_bo_lock(tbm_bo bo, int device, int opt)
 
 		return ret;
 	}
-
 #endif
+
 	return 1;
 }
 
@@ -1489,7 +1487,6 @@ tbm_sprd_bo_unlock(tbm_bo bo)
 {
 	SPRD_RETURN_VAL_IF_FAIL (bo != NULL, 0);
 
-#if USE_BACKEND_LOCK
 	tbm_bufmgr_sprd bufmgr_sprd;
 	tbm_bo_sprd bo_sprd;
 	int ret = 0;
@@ -1501,6 +1498,7 @@ tbm_sprd_bo_unlock(tbm_bo bo)
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
 
 	if (bufmgr_sprd->use_dma_fence) {
+#if USE_BACKEND_LOCK
 		struct dma_buf_fence fence;
 
 		if (!bo_sprd->dma_fence[0].ctx) {
@@ -1547,6 +1545,7 @@ tbm_sprd_bo_unlock(tbm_bo bo)
 		return ret;
 	}
 #endif
+
 	return 1;
 }
 
