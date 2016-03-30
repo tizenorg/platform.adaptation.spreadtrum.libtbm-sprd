@@ -230,7 +230,6 @@ struct _tbm_bufmgr_sprd {
 	int tgl_fd;
 
 	void *bind_display;
-
 	char *device_name;
 };
 
@@ -259,7 +258,7 @@ uint32_t tbm_sprd_color_format_list[TBM_COLOR_FORMAT_COUNT] = { TBM_FORMAT_RGBA8
 								TBM_FORMAT_YUV420,
 								TBM_FORMAT_YVU420
 							      };
-
+#ifdef USE_CACHE
 static inline int
 _tgl_init(int fd, unsigned int key)
 {
@@ -366,6 +365,7 @@ _tgl_get_data(int fd, unsigned int key, unsigned int *locked)
 
 	return arg.data1;
 }
+#endif
 
 static int
 _tbm_sprd_open_drm()
@@ -460,23 +460,16 @@ _tbm_sprd_open_drm()
 }
 
 static int
-_sprd_bo_cache_flush (tbm_bo bo, int flags)
+_sprd_bo_cache_flush (tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd, int flags)
 {
-	tbm_bufmgr_sprd bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
+#ifdef USE_CACHE
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
+	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
 
 	/* cache flush is managed by kernel side when using dma-fence. */
 	if (bufmgr_sprd->use_dma_fence)
 		return 1;
 
-	SPRD_RETURN_VAL_IF_FAIL (bo != NULL, 0);
-
-	tbm_bo_sprd bo_sprd;
-
-	bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
-	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
-
-#ifdef USE_CACHE
 	struct drm_sprd_gem_cache_op cache_op = {0, };
 	int ret;
 
@@ -523,37 +516,43 @@ _sprd_bo_cache_flush (tbm_bo bo, int flags)
 }
 
 static int
-_bo_init_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd)
+_bo_init_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd, int import)
 {
-	tbm_bo_cache_state cache_state;
-
+#ifdef USE_CACHE
 	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
 
+	tbm_bo_cache_state cache_state;
+
+	if (bufmgr_sprd->use_dma_fence)
+		return 1;
+
 	_tgl_init(bufmgr_sprd->tgl_fd, bo_sprd->name);
 
-	cache_state.data.isDirtied = DEVICE_NONE;
-	cache_state.data.isCached = 0;
-	cache_state.data.cntFlush = 0;
+	if (import == 0) {
+		cache_state.data.isDirtied = DEVICE_NONE;
+		cache_state.data.isCached = 0;
+		cache_state.data.cntFlush = 0;
 
-	_tgl_set_data(bufmgr_sprd->tgl_fd, bo_sprd->name, cache_state.val);
+		_tgl_set_data(bufmgr_sprd->tgl_fd, bo_sprd->name, cache_state.val);
+	}
+#endif
 
 	return 1;
 }
 
 static int
-_bo_set_cache_state(tbm_bo bo, int device, int opt)
+_bo_set_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd, int device, int opt)
 {
-	tbm_bo_sprd bo_sprd;
-	tbm_bufmgr_sprd bufmgr_sprd;
+#ifdef USE_CACHE
+	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
+	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
+
 	char need_flush = 0;
 	unsigned short cntFlush = 0;
 
-	bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
-	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
-
-	bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
-	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
+	if (bufmgr_sprd->use_dma_fence)
+		return 1;
 
 	if (bo_sprd->flags_sprd & SPRD_BO_NONCACHABLE)
 		return 1;
@@ -595,7 +594,7 @@ _bo_set_cache_state(tbm_bo bo, int device, int opt)
 			_tgl_set_data(bufmgr_sprd->tgl_fd, GLOBAL_KEY, (unsigned int)(++cntFlush));
 
 		/* call cache flush */
-		_sprd_bo_cache_flush (bo, need_flush);
+		_sprd_bo_cache_flush (bufmgr_sprd, bo_sprd, need_flush);
 
 		DBG("[libtbm:%d] \tcache(%d,%d)....flush:0x%x, cntFlush(%d)\n",
 		    getpid(),
@@ -604,22 +603,22 @@ _bo_set_cache_state(tbm_bo bo, int device, int opt)
 		    need_flush,
 		    cntFlush);
 	}
+#endif
 
 	return 1;
 }
 
 static int
-_bo_save_cache_state(tbm_bo bo)
+_bo_save_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd)
 {
-	unsigned short cntFlush = 0;
-	tbm_bo_sprd bo_sprd;
-	tbm_bufmgr_sprd bufmgr_sprd;
-
-	bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
+#ifdef USE_CACHE
 	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
-
-	bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
+
+	if (bufmgr_sprd->use_dma_fence)
+		return 1;
+
+	unsigned short cntFlush = 0;
 
 	/* get global cache flush count */
 	cntFlush = (unsigned short)_tgl_get_data(bufmgr_sprd->tgl_fd, GLOBAL_KEY, NULL);
@@ -627,23 +626,74 @@ _bo_save_cache_state(tbm_bo bo)
 	/* save global cache flush count */
 	bo_sprd->cache_state.data.cntFlush = cntFlush;
 	_tgl_set_data(bufmgr_sprd->tgl_fd, bo_sprd->name, bo_sprd->cache_state.val);
+#endif
 
 	return 1;
 }
 
 static void
-_bo_destroy_cache_state(tbm_bo bo)
+_bo_destroy_cache_state(tbm_bufmgr_sprd bufmgr_sprd, tbm_bo_sprd bo_sprd)
 {
-	tbm_bo_sprd bo_sprd;
-	tbm_bufmgr_sprd bufmgr_sprd;
-
-	bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
+#ifdef USE_CACHE
 	SPRD_RETURN_IF_FAIL (bo_sprd != NULL);
-
-	bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
 	SPRD_RETURN_IF_FAIL (bufmgr_sprd != NULL);
 
+	if (bufmgr_sprd->use_dma_fence)
+		return;
+
 	_tgl_destroy(bufmgr_sprd->tgl_fd, bo_sprd->name);
+#endif
+}
+
+static int
+_bufmgr_init_cache_state(tbm_bufmgr_sprd bufmgr_sprd)
+{
+#ifdef USE_CACHE
+	SPRD_RETURN_VAL_IF_FAIL(bufmgr_sprd != NULL, 0);
+
+	if (bufmgr_sprd->use_dma_fence)
+		return 1;
+
+	/* open tgl fd for saving cache flush data */
+	bufmgr_sprd->tgl_fd = open(tgl_devfile, O_RDWR);
+
+	if (bufmgr_sprd->tgl_fd < 0) {
+		bufmgr_sprd->tgl_fd = open(tgl_devfile1, O_RDWR);
+		if (bufmgr_sprd->tgl_fd < 0) {
+			TBM_SPRD_LOG("[libtbm-sprd:%d] "
+				       "error: Fail to open global_lock:%s\n",
+				       getpid(), tgl_devfile);
+
+			close(bufmgr_sprd->tgl_fd);
+			return 0;
+		}
+	}
+
+	if (!_tgl_init(bufmgr_sprd->tgl_fd, GLOBAL_KEY)) {
+		TBM_SPRD_LOG("[libtbm-sprd:%d] "
+			       "error: Fail to initialize the tgl\n",
+			       getpid());
+
+		close(bufmgr_sprd->tgl_fd);
+		return 0;
+	}
+#endif
+
+	return 1;
+}
+
+static void
+_bufmgr_deinit_cache_state(tbm_bufmgr_sprd bufmgr_sprd)
+{
+#ifdef USE_CACHE
+	SPRD_RETURN_IF_FAIL(bufmgr_sprd != NULL);
+
+	if (bufmgr_sprd->use_dma_fence)
+		return;
+
+	if (bufmgr_sprd->tgl_fd >= 0)
+		close(bufmgr_sprd->tgl_fd);
+#endif
 }
 
 #ifndef USE_CONTIG_ONLY
@@ -850,7 +900,7 @@ tbm_sprd_bo_alloc (tbm_bo bo, int size, int flags)
 	bo_sprd->flags_sprd = sprd_flags;
 	bo_sprd->name = _get_name (bo_sprd->fd, bo_sprd->gem);
 
-	if (!_bo_init_cache_state(bufmgr_sprd, bo_sprd)) {
+	if (!_bo_init_cache_state(bufmgr_sprd, bo_sprd, 0)) {
 		TBM_SPRD_LOG ("error fail init cache state(%d)\n", bo_sprd->name);
 		free (bo_sprd);
 		return 0;
@@ -941,7 +991,7 @@ tbm_sprd_bo_free(tbm_bo bo)
 			      getpid(), __FUNCTION__, __LINE__, bo_sprd->name, ret);
 	}
 
-	_bo_destroy_cache_state(bo);
+	_bo_destroy_cache_state(bufmgr_sprd, bo_sprd);
 
 	/* Free gem handle */
 	struct drm_gem_close arg = {0, };
@@ -972,7 +1022,6 @@ tbm_sprd_bo_import (tbm_bo bo, unsigned int key)
 
 	ret = drmHashLookup (bufmgr_sprd->hashBos, key, (void **)&privGem);
 	if (ret == 0) {
-		privGem->ref_count++;
 		return privGem->bo_priv;
 	}
 
@@ -1018,8 +1067,8 @@ tbm_sprd_bo_import (tbm_bo bo, unsigned int key)
 	bo_sprd->flags_tbm = _get_tbm_flag_from_sprd (bo_sprd->flags_sprd);
 #endif
 
-	if (!_tgl_init(bufmgr_sprd->tgl_fd, bo_sprd->name)) {
-		TBM_SPRD_LOG ("error fail tgl init(%d)\n", bo_sprd->name);
+	if (!_bo_init_cache_state(bufmgr_sprd, bo_sprd, 1)) {
+		TBM_SPRD_LOG ("error fail init cache state(%d)\n", bo_sprd->name);
 		free (bo_sprd);
 		return 0;
 	}
@@ -1088,7 +1137,6 @@ tbm_sprd_bo_import_fd (tbm_bo bo, tbm_fd key)
 	ret = drmHashLookup (bufmgr_sprd->hashBos, name, (void **)&privGem);
 	if (ret == 0) {
 		if (gem == privGem->bo_priv->gem) {
-			privGem->ref_count++;
 			return privGem->bo_priv;
 		}
 	}
@@ -1136,8 +1184,8 @@ tbm_sprd_bo_import_fd (tbm_bo bo, tbm_fd key)
 		return 0;
 	}
 
-	if (!_tgl_init(bufmgr_sprd->tgl_fd, bo_sprd->name)) {
-		TBM_SPRD_LOG ("error fail tgl init(%d)\n", bo_sprd->name);
+	if (!_bo_init_cache_state(bufmgr_sprd, bo_sprd, 1)) {
+		TBM_SPRD_LOG ("error fail init cache state(%d)\n", bo_sprd->name);
 		free (bo_sprd);
 		return 0;
 	}
@@ -1275,6 +1323,10 @@ tbm_sprd_bo_map (tbm_bo bo, int device, int opt)
 
 	tbm_bo_handle bo_handle;
 	tbm_bo_sprd bo_sprd;
+	tbm_bufmgr_sprd bufmgr_sprd;
+
+	bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
+	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, (tbm_bo_handle) NULL);
 
 	bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
 	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, (tbm_bo_handle) NULL);
@@ -1299,7 +1351,7 @@ tbm_sprd_bo_map (tbm_bo bo, int device, int opt)
 	}
 
 	if (bo_sprd->map_cnt == 0)
-		_bo_set_cache_state (bo, device, opt);
+		_bo_set_cache_state (bufmgr_sprd, bo_sprd, device, opt);
 
 	bo_sprd->map_cnt++;
 
@@ -1312,6 +1364,10 @@ tbm_sprd_bo_unmap (tbm_bo bo)
 	SPRD_RETURN_VAL_IF_FAIL (bo != NULL, 0);
 
 	tbm_bo_sprd bo_sprd;
+	tbm_bufmgr_sprd bufmgr_sprd;
+
+	bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
+	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
 
 	bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
 	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
@@ -1322,7 +1378,7 @@ tbm_sprd_bo_unmap (tbm_bo bo)
 	bo_sprd->map_cnt--;
 
 	if (bo_sprd->map_cnt == 0)
-		_bo_save_cache_state (bo);
+		_bo_save_cache_state (bufmgr_sprd, bo_sprd);
 
 	DBG ("[libtbm-sprd:%d] %s gem:%d(%d) \n", getpid(),
 	     __FUNCTION__, bo_sprd->gem, bo_sprd->name);
@@ -1525,7 +1581,8 @@ tbm_sprd_bufmgr_deinit (void *priv)
 	if (bufmgr_sprd->device_name)
 		free(bufmgr_sprd->device_name);
 
-	close (bufmgr_sprd->tgl_fd);
+	_bufmgr_deinit_cache_state(bufmgr_sprd);
+
 	close (bufmgr_sprd->fd);
 
 	free (bufmgr_sprd);
@@ -1870,7 +1927,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 			bufmgr_sprd->fd = _tbm_sprd_open_drm();
 		else
 			bufmgr_sprd->fd = master_fd;
-		
+
 		if (bufmgr_sprd->fd < 0) {
 			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
 			free (bufmgr_sprd);
@@ -1897,34 +1954,6 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 		}
 	}
 
-	/* open tgl fd for saving cache flush data */
-	bufmgr_sprd->tgl_fd = open(tgl_devfile, O_RDWR);
-
-	if (bufmgr_sprd->tgl_fd < 0) {
-		bufmgr_sprd->tgl_fd = open(tgl_devfile1, O_RDWR);
-		if (bufmgr_sprd->tgl_fd < 0) {
-			TBM_SPRD_LOG("[libtbm:%d] "
-				     "error: Fail to open global_lock:%s\n",
-				     getpid(), tgl_devfile);
-
-			close(bufmgr_sprd->fd);
-			free (bufmgr_sprd);
-			return 0;
-		}
-	}
-
-	if (!_tgl_init(bufmgr_sprd->tgl_fd, GLOBAL_KEY)) {
-		TBM_SPRD_LOG("[libtbm:%d] "
-			     "error: Fail to initialize the tgl\n",
-			     getpid());
-
-		close(bufmgr_sprd->fd);
-		close(bufmgr_sprd->tgl_fd);
-
-		free (bufmgr_sprd);
-		return 0;
-	}
-
 	//Create Hash Table
 	bufmgr_sprd->hashBos = drmHashCreate ();
 
@@ -1941,12 +1970,24 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 		close(fp);
 	}
 
+	if (!_bufmgr_init_cache_state(bufmgr_sprd)) {
+		TBM_SPRD_LOG ("[libtbm-sprd:%d] error: init bufmgr cache state failed!\n", getpid());
+
+		tbm_drm_helper_unset_tbm_master_fd();
+		close(bufmgr_sprd->fd);
+
+		free(bufmgr_sprd);
+		return 0;
+	}
+
 	bufmgr_backend = tbm_backend_alloc();
 	if (!bufmgr_backend) {
 		TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
 
+		_bufmgr_deinit_cache_state(bufmgr_sprd);
+
+		tbm_drm_helper_unset_tbm_master_fd();
 		close(bufmgr_sprd->fd);
-		close(bufmgr_sprd->tgl_fd);
 
 		free (bufmgr_sprd);
 		return 0;
@@ -1975,7 +2016,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 		TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to init backend!\n", getpid());
 		tbm_backend_free (bufmgr_backend);
 
-		close(bufmgr_sprd->tgl_fd);
+		_bufmgr_deinit_cache_state(bufmgr_sprd);
+
+		tbm_drm_helper_unset_tbm_master_fd();
 		close(bufmgr_sprd->fd);
 
 		free (bufmgr_sprd);
