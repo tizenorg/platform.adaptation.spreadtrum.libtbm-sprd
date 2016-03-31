@@ -834,7 +834,7 @@ tbm_sprd_bo_alloc (tbm_bo bo, int size, int flags)
 	}
 #endif // USE_CONTIG_ONLY
 	struct drm_sprd_gem_create arg = {0, };
-	arg.size = size;
+	arg.size = (uint64_t)size;
 	arg.flags = sprd_flags;
 	if (drmCommandWriteRead(bufmgr_sprd->fd, DRM_SPRD_GEM_CREATE, &arg,
 				sizeof(arg))) {
@@ -1889,6 +1889,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 		if (!bufmgr_sprd->device_name)
 		{
 			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to get device name!\n", getpid());
+			close(bufmgr_sprd->fd);
 			free (bufmgr_sprd);
 			return 0;
 		}
