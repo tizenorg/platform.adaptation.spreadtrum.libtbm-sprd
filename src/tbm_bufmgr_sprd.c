@@ -1390,7 +1390,6 @@ tbm_sprd_bo_lock(tbm_bo bo, int device, int opt)
 
 	tbm_bufmgr_sprd bufmgr_sprd;
 	tbm_bo_sprd bo_sprd;
-	int ret = 0;
 
 	bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
 	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
@@ -1398,8 +1397,11 @@ tbm_sprd_bo_lock(tbm_bo bo, int device, int opt)
 	bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
 
-	if (bufmgr_sprd->use_dma_fence) {
 #if USE_BACKEND_LOCK
+	int ret = 0;
+
+	if (bufmgr_sprd->use_dma_fence) {
+
 		struct dma_buf_fence fence;
 
 		memset(&fence, 0, sizeof(struct dma_buf_fence));
@@ -1489,7 +1491,6 @@ tbm_sprd_bo_unlock(tbm_bo bo)
 
 	tbm_bufmgr_sprd bufmgr_sprd;
 	tbm_bo_sprd bo_sprd;
-	int ret = 0;
 
 	bo_sprd = (tbm_bo_sprd)tbm_backend_get_bo_priv(bo);
 	SPRD_RETURN_VAL_IF_FAIL (bo_sprd != NULL, 0);
@@ -1497,8 +1498,10 @@ tbm_sprd_bo_unlock(tbm_bo bo)
 	bufmgr_sprd = (tbm_bufmgr_sprd)tbm_backend_get_bufmgr_priv(bo);
 	SPRD_RETURN_VAL_IF_FAIL (bufmgr_sprd != NULL, 0);
 
-	if (bufmgr_sprd->use_dma_fence) {
 #if USE_BACKEND_LOCK
+	int ret = 0;
+
+	if (bufmgr_sprd->use_dma_fence) {
 		struct dma_buf_fence fence;
 
 		if (!bo_sprd->dma_fence[0].ctx) {
@@ -1918,14 +1921,11 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 	}
 
 	if (tbm_backend_is_display_server()) {
-		int master_fd = -1;
-
 		bufmgr_sprd->fd = -1;
-		master_fd = tbm_drm_helper_get_master_fd();
-		if (master_fd < 0)
+
+		bufmgr_sprd->fd = tbm_drm_helper_get_master_fd();
+		if (bufmgr_sprd->fd < 0)
 			bufmgr_sprd->fd = _tbm_sprd_open_drm();
-		else
-			bufmgr_sprd->fd = master_fd;
 
 		if (bufmgr_sprd->fd < 0) {
 			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to create drm!\n", getpid());
@@ -1940,6 +1940,7 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 		if (!bufmgr_sprd->device_name)
 		{
 			TBM_SPRD_LOG ("[libtbm-sprd:%d] error: Fail to get device name!\n", getpid());
+			tbm_drm_helper_unset_tbm_master_fd();
 			close(bufmgr_sprd->fd);
 			free (bufmgr_sprd);
 			return 0;
@@ -1972,7 +1973,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 	if (!_bufmgr_init_cache_state(bufmgr_sprd)) {
 		TBM_SPRD_LOG ("[libtbm-sprd:%d] error: init bufmgr cache state failed!\n", getpid());
 
-		tbm_drm_helper_unset_tbm_master_fd();
+		if (tbm_backend_is_display_server())
+			tbm_drm_helper_unset_tbm_master_fd();
+
 		close(bufmgr_sprd->fd);
 
 		free(bufmgr_sprd);
@@ -1985,7 +1988,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 
 		_bufmgr_deinit_cache_state(bufmgr_sprd);
 
-		tbm_drm_helper_unset_tbm_master_fd();
+		if (tbm_backend_is_display_server())
+			tbm_drm_helper_unset_tbm_master_fd();
+
 		close(bufmgr_sprd->fd);
 
 		free (bufmgr_sprd);
@@ -2017,7 +2022,9 @@ init_tbm_bufmgr_priv (tbm_bufmgr bufmgr, int fd)
 
 		_bufmgr_deinit_cache_state(bufmgr_sprd);
 
-		tbm_drm_helper_unset_tbm_master_fd();
+		if (tbm_backend_is_display_server())
+			tbm_drm_helper_unset_tbm_master_fd();
+
 		close(bufmgr_sprd->fd);
 
 		free (bufmgr_sprd);
