@@ -388,7 +388,6 @@ _tbm_sprd_open_drm()
 		struct udev_device *device = NULL, *drm_device = NULL, *device_parent = NULL;
 		const char *filepath;
 		struct stat s;
-		int fd = -1;
 		int ret;
 
 		TBM_SPRD_LOG ("[libtbm-sprd:%d] "
@@ -447,6 +446,7 @@ _tbm_sprd_open_drm()
 		ret = fstat(fd, &s);
 		if (ret) {
 			TBM_SPRD_LOG("fstat() failed %s.\n");
+			close(fd);
 			udev_device_unref(drm_device);
 			udev_unref(udev);
 			return -1;
@@ -661,8 +661,6 @@ _bufmgr_init_cache_state(tbm_bufmgr_sprd bufmgr_sprd)
 			TBM_SPRD_LOG("[libtbm-sprd:%d] "
 				       "error: Fail to open global_lock:%s\n",
 				       getpid(), tgl_devfile);
-
-			close(bufmgr_sprd->tgl_fd);
 			return 0;
 		}
 	}
