@@ -37,6 +37,8 @@ make %{?_smp_mflags}
 rm -rf %{buildroot}
 mkdir -p %{buildroot}/%{TZ_SYS_RO_SHARE}/license
 cp -af COPYING %{buildroot}/%{TZ_SYS_RO_SHARE}/license/%{name}
+mkdir -p %{buildroot}%{_libdir}/udev/rules.d/
+cp -af rules/99-libtbm_sprd.rules %{buildroot}%{_libdir}/udev/rules.d/
 %make_install
 
 
@@ -52,4 +54,5 @@ ln -s libtbm_sprd.so %{_libdir}/bufmgr/libtbm_default.so
 %defattr(-,root,root,-)
 %{TZ_SYS_RO_SHARE}/license/%{name}
 %{_libdir}/bufmgr/libtbm_*.so*
+%{_libdir}/udev/rules.d/99-libtbm_sprd.rules
 
