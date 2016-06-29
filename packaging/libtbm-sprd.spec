@@ -10,7 +10,6 @@ ExclusiveArch:
 %endif
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  pkgconfig(pthread-stubs)
 BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  pkgconfig(libtbm)
 BuildRequires:  pkgconfig(dlog)
