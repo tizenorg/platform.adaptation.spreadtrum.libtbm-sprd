@@ -1634,6 +1634,7 @@ tbm_sprd_surface_get_plane_data(int width, int height,
 	int _pitch = 0;
 	int _size = 0;
 	int _bo_idx = 0;
+	int _align_height = 0;
 
 	switch (format) {
 		/* 16 bpp RGB */
@@ -1711,12 +1712,14 @@ tbm_sprd_surface_get_plane_data(int width, int height,
 		if (plane_idx == 0) {
 			_offset = 0;
 			_pitch = SIZE_ALIGN( width , TBM_SURFACE_ALIGNMENT_PITCH_YUV);
-			_size = SIZE_ALIGN(_pitch * height, TBM_SURFACE_ALIGNMENT_PLANE);
+			_align_height = SIZE_ALIGN(height, TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+			_size = SIZE_ALIGN(_pitch * _align_height, TBM_SURFACE_ALIGNMENT_PLANE);
 			_bo_idx = 0;
 		} else if ( plane_idx == 1 ) {
 			_offset = width * height;
 			_pitch = SIZE_ALIGN( width , TBM_SURFACE_ALIGNMENT_PITCH_YUV / 2);
-			_size = SIZE_ALIGN(_pitch * (height / 2), TBM_SURFACE_ALIGNMENT_PLANE);
+			_align_height = SIZE_ALIGN(height / 2, TBM_SURFACE_ALIGNMENT_PITCH_YUV);
+			_size = SIZE_ALIGN(_pitch * _align_height, TBM_SURFACE_ALIGNMENT_PLANE);
 			_bo_idx = 0;
 		}
 		break;
